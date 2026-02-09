@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My DIY IoT Control</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background-color: #222; color: white; padding: 20px; }
+        .card { background: #333; max-width: 400px; margin: auto; padding: 20px; border-radius: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        h1 { color: #00ff7f; }
+        .value { font-size: 3rem; font-weight: bold; margin: 20px 0; }
+        .btn { padding: 15px 30px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; margin: 5px; width: 100px; }
+        .btn-on { background-color: #ff4d4d; color: white; }
+        .btn-off { background-color: #4caf50; color: white; }
+        .btn-auto { background-color: #2196F3; color: white; width: 210px; }
+        #status { color: gray; font-size: 0.8rem; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🌱 สั่งงานรดน้ำ (DIY)</h1>
+    <p>ความชื้นในดินปัจจุบัน</p>
+    <div id="soilVal" class="value">-- %</div>
+    <p>สถานะปั๊ม: <span id="pumpStatus" style="font-weight:bold;">Waiting...</span></p>
+    
+    <hr style="border-color:#555;">
+    
+    <p>แผงควบคุม (Manual)</p>
+    <button class="btn btn-on" onclick="sendCommand('ON')">เปิดน้ำ</button>
+    <button class="btn btn-off" onclick="sendCommand('OFF')">ปิดน้ำ</button>
+    <br>
+    <button class="btn btn-auto" onclick="sendCommand('AUTO')">กลับสู่โหมด Auto</button>
+    
+    <div id="status">Connecting to MQTT Broker...</div>
+</div>
+
+<script>
+    // ตั้งค่าต้องให้ตรงกับใน ESP32
+    // หมายเหตุ: บนหน้าเว็บต้องใช้ Port WebSockets (8000) ไม่ใช่ 1883
+    const broker = "broker.hivemq.com";
+    const port = 8000; 
+    const topicSoil = "miniproject/soil_020";
+    const topicPump = "miniproject/pump_020";
+    const topicBtn  = "miniproject/btn_020";
+
+    // สร้าง Client ID สุ่ม
+    const clientID = "WebClient-" + parseInt(Math.random() * 100);
+    const client = new Paho.MQTT.Client(broker, port, clientID);
+
+    // เมื่อเชื่อมต่อสำเร็จ
+    function onConnect() {
+        console.log("Connected to MQTT");
+        document.getElementById("status").innerText = "🟢 System Online";
+        document.getElementById("status").style.color = "#00ff7f";
+        
+        // สมัครรับข้อมูล
+        client.subscribe(topicSoil);
+        client.subscribe(topicPump);
+    }
+
+    // เมื่อการเชื่อมต่อหลุด
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("Connection Lost: " + responseObject.errorMessage);
+            document.getElementById("status").innerText = "🔴 Offline";
+            document.getElementById("status").style.color = "red";
+        }
+    }
+
+    // เมื่อได้รับข้อความจาก ESP32
+    function onMessageArrived(message) {
+        console.log("Topic: " + message.destinationName + " Msg: " + message.payloadString);
+        
+        if (message.destinationName === topicSoil) {
+            document.getElementById("soilVal").innerText = message.payloadString + " %";
+        } else if (message.destinationName === topicPump) {
+            let state = message.payloadString;
+            let el = document.getElementById("pumpStatus");
+            el.innerText = state;
+            el.style.color = (state === "ON") ? "#ff4d4d" : "#4caf50";
+        }
+    }
+
+    // ฟังก์ชันส่งคำสั่ง (เมื่อกดปุ่ม)
+    function sendCommand(cmd) {
+        message = new Paho.MQTT.Message(cmd);
+        message.destinationName = topicBtn;
+        client.send(message);
+    }
+
+    // เริ่มการเชื่อมต่อ
+    client.onConnectionLost = onConnectionLost;
+    client.onMessageArrived = onMessageArrived;
+    client.connect({onSuccess:onConnect});
+</script>
+
+</body>
+</html>
